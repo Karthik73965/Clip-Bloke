@@ -1,0 +1,14 @@
+# big / generated
+downloads/
+work/
+output/
+__pycache__/
+*.pyc
+
+# fetched by setup (Mixkit licence forbids redistributing the raw files)
+assets/sfx/*/
+assets/sfx/credits.json
+assets/bgm/
+
+# secrets
+.env
