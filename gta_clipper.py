@@ -255,9 +255,12 @@ class Transcriber:
             try:
                 if self.model is None:
                     self._load()
-                segs, _ = self.model.transcribe(str(wav), word_timestamps=True, vad_filter=True,
+                # no VAD: it drops shouting over loud game audio. Music lyrics that whisper
+                # hallucinates instead come with a high no-speech probability, so drop those.
+                segs, _ = self.model.transcribe(str(wav), word_timestamps=True, vad_filter=False,
                                                 beam_size=5, condition_on_previous_text=False)
-                return [Word(w.word, w.start, w.end) for s in segs for w in (s.words or [])]
+                return [Word(w.word, w.start, w.end) for s in segs if s.no_speech_prob <= 0.6 and s.avg_logprob > -1.0
+                        for w in (s.words or [])]
             except Exception as e:  # missing CUDA/cuDNN DLLs show up here, not at load
                 if self.cpu:
                     raise
@@ -628,7 +631,7 @@ def preview_strip(video, out, frames=8):
 
 # ---------------------------------------------------------------- plan
 
-MIN_CLIP = 12.0
+MIN_CLIP = 14.0    # + ~6 s opening (flash-forward, rewind, narrator) = 20-35 s Shorts
 MAX_EXTEND = 20.0   # a reviewer may extend a cut this far past either side of its window
 
 
@@ -719,7 +722,7 @@ def prepare(args):
 def cut_range(c):
     """(a, b, peak) in seconds relative to the candidate window; a may be < 0 and b > length."""
     L = c["length"]
-    a = min(max(-MAX_EXTEND, -c["start"], c["trim_start"]), L - MIN_CLIP)
+    a = min(max(-MAX_EXTEND, -c["start"], c["trim_start"]), L + MAX_EXTEND - MIN_CLIP)
     b = min(L + MAX_EXTEND, max(c["trim_end"], a + MIN_CLIP))
     peak = c["peak"] if a <= c["peak"] <= b else (c["loud_peak"] if a <= c["loud_peak"] <= b else a + (b - a) * 0.65)
     return a, b, peak

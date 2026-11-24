@@ -48,6 +48,13 @@ report the total time.
    - each Short with its path, a one-line description and its score,
    - how many candidates you rejected, and the main reasons why.
 
+## Output spec (agreed with the user)
+
+- **20–35 s** vertical Shorts, 1080x1920.
+- **Facecam on top, gameplay below.** Set the top-level `facecam` for every stream.
+- **Narration:** intro **and** outro on every Short. Write a real outro line, not `""`.
+- **Render every candidate scoring 6+.** No fixed count.
+
 ## Fields you set (per candidate)
 
 | field | meaning |
@@ -55,7 +62,7 @@ report the total time.
 | `keep` | `true` only if a viewer scrolling past would stop and watch to the end |
 | `score` | 1–10. 8+ = likely viral, 6–7 = solid, 5 = forgettable. Be strict. |
 | `reason` | one sentence: what happens and why it does or doesn't work |
-| `trim_start`, `trim_end` | seconds relative to the window start. They **may go outside the window**, up to 20 s either way (e.g. `-8` to include the setup before it), because the HD cut is downloaded exactly. Aim for 12–30 s: start 2–6 s before the action builds, end 1.5–4 s after the reaction. |
+| `trim_start`, `trim_end` | seconds relative to the window start. They **may go outside the window**, up to 20 s either way (e.g. `-8` to include the setup before it), because the HD cut is downloaded exactly. Cut 14–28 s (the opening adds ~6 s, so Shorts land at **20–35 s**): start 2–6 s before the action builds, end 1.5–4 s after the reaction. |
 | `peak` | second of the single biggest reaction, on the same clock as the trims. The flash-forward, zoom punch, flash, SFX and slow-mo all land here, so be precise. Use `peek`. |
 | `hook` | text over the opening flash-forward. ALL CAPS, max 6 words. Teases the payoff and doesn't spoil it. |
 | `intro` | narrator setup line, spoken by TTS after the rewind: max 14 words, 1–2 short sentences. |
