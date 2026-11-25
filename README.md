@@ -12,7 +12,7 @@ stream link
 ```
 
 **No repeats.** Every delivered Short and every rejected moment is recorded in `history/<video_id>.json`,
-which the tool commits and pushes, so every laptop and agent shares it. Paste the same stream again
+kept on each laptop (optionally shared through git, see SETUP.md). Paste the same stream again
 and you get only new moments (it digs into quieter ones each pass). `render` refuses a cut that repeats
 a delivered Short. `python gta_clipper.py history [<id>] [--all]` shows what's been given.
 

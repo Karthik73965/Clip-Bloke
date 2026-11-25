@@ -13,13 +13,14 @@ finish. The only reason to stop early is a failed `python doctor.py` check (see 
 report the total time.
 
 **Never give the user the same clip twice.** `history/<video_id>.json` records every moment already
-delivered (rendered) or rejected, for every stream, and is shared through git:
-- `prepare` pulls it first and skips all of those moments. If the stream was done before, it is a new
+delivered (rendered) or rejected, for every stream. It is kept on this laptop; git syncing is
+optional (`GTA_BLOKE_SYNC=1` in `.env`) and never required:
+- `prepare` skips all of those moments. If the stream was done before, it is a new
   **pass**: it digs deeper (a lower loudness bar each pass) and offers only moments nobody has judged.
   Candidate ids continue from the last pass (e.g. `c13` onward), so earlier Shorts are never overwritten.
 - `render` refuses a cut that shares more than 5 s with an already-delivered Short. If that happens,
   trim the candidate away from it, or drop it if it's the same moment. Records every Short (and every
-  reviewed reject) as it goes, then commits and pushes `history/` itself.
+  reviewed reject) as it goes. Never run git commands for it yourself.
 - If `prepare` says nothing new is left, don't force it: tell the user, show
   `python gta_clipper.py history <video_id>`, and mention `--min-z` (e.g. `0.2`) for quieter moments.
 - Don't edit or delete `history/` by hand.

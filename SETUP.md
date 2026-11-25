@@ -10,6 +10,8 @@ git clone <your repo url> GTA-Bloke
 cd GTA-Bloke
 ```
 
+(Or download the repo as a ZIP and unzip it. Git isn't required.)
+
 ## 2. One-shot setup (about 10 minutes)
 
 ```powershell
@@ -77,10 +79,12 @@ The results go to `output/<video_id>/`:
 
 ### Clip history across laptops
 
-`history/` records every Short already delivered and every rejected moment. `prepare` and `render` run
-`git pull` / `git push` on it themselves, so this laptop needs push access to the repo (sign in once with
-`git push` or the GitHub credential manager). If the laptop is offline or can't push, the run still works on
-the local copy and pushes on a later run. Set `GTA_BLOKE_NO_SYNC=1` to turn the syncing off.
+`history/` records every Short already delivered and every rejected moment, so the same clip is never
+made twice on this laptop. **Git is not needed for this** (or at all: downloading the repo as a ZIP works).
+
+Optional: to share the history between laptops through the repo, add `GTA_BLOKE_SYNC=1` to a `.env` file
+in this folder. `prepare` and `render` then `git pull` / `git push` only `history/`, which needs push access
+to the repo. If a pull or push fails, the run carries on with the local copy.
 
 ## Without an agent
 

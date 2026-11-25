@@ -745,9 +745,10 @@ def git(*args, timeout=90):
 
 
 def sync_history(push=False, msg=""):
-    """Pull the shared history before a run; commit and push only history/ after one.
-    Never fatal: offline or without git access the run goes on with the local copy."""
-    if os.environ.get("GTA_BLOKE_NO_SYNC"):
+    """Opt-in (GTA_BLOKE_SYNC=1 in .env): pull the shared history before a run; commit and push
+    only history/ after one. Off by default, so git is never needed. Never fatal: offline or
+    without git access the run goes on with the local copy."""
+    if os.environ.get("GTA_BLOKE_SYNC", "").lower() not in ("1", "true", "yes", "push"):
         return
     try:
         if git("rev-parse", "--is-inside-work-tree").returncode or not git("remote").stdout.strip():
