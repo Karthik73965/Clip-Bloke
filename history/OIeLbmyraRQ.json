@@ -1,0 +1,183 @@
+{
+ "video_id": "OIeLbmyraRQ",
+ "url": "https://www.youtube.com/watch?v=OIeLbmyraRQ",
+ "title": "🔴 BEATING GTA 6 RIGHT NOW 100% (FINAL MISSION)",
+ "duration": 22061,
+ "passes": 1,
+ "clips": [
+  {
+   "key": "t2311",
+   "status": "rejected",
+   "range": [
+    2311.25,
+    2341.25
+   ],
+   "time": "0:38:31",
+   "score": 2,
+   "reason": "Boat cutscene; the speech is game characters, no Speed reaction.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t6276",
+   "status": "rejected",
+   "range": [
+    6276.75,
+    6306.75
+   ],
+   "time": "1:44:36",
+   "score": 2,
+   "reason": "Save/load menus for most of the window.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t7289",
+   "status": "rejected",
+   "range": [
+    7289.75,
+    7319.75
+   ],
+   "time": "2:01:29",
+   "score": 2,
+   "reason": "Pause menu the whole time.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t9504",
+   "status": "delivered",
+   "range": [
+    9522.65,
+    9536.75
+   ],
+   "time": "2:38:42",
+   "score": 7,
+   "reason": "Shootout in the shipping yard: Speed yells 'Rocko, push him!', the dog takes the guy down, Speed hypes Rocko up.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "hook": "ROCKO WAS NOT PLAYING",
+   "title": "Rocko saved Speed in GTA 6's final mission 🐕",
+   "file": "output/OIeLbmyraRQ/short_c04.mp4",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t11730",
+   "status": "rejected",
+   "range": [
+    11730.5,
+    11760.5
+   ],
+   "time": "3:15:30",
+   "score": 2,
+   "reason": "Trophy popup then save menus; no gameplay payoff.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t11997",
+   "status": "rejected",
+   "range": [
+    11997.75,
+    12027.75
+   ],
+   "time": "3:19:57",
+   "score": 2,
+   "reason": "Walking through a car showroom; nothing happens.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t12601",
+   "status": "rejected",
+   "range": [
+    12601.25,
+    12631.25
+   ],
+   "time": "3:30:01",
+   "score": 2,
+   "reason": "Pause menu and mission select screens.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t15545",
+   "status": "rejected",
+   "range": [
+    15545.0,
+    15575.0
+   ],
+   "time": "4:19:05",
+   "score": 2,
+   "reason": "Pause and load menus.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t16055",
+   "status": "rejected",
+   "range": [
+    16055.5,
+    16085.5
+   ],
+   "time": "4:27:35",
+   "score": 2,
+   "reason": "Wasted screen then 15 s of black loading.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t16590",
+   "status": "delivered",
+   "range": [
+    16579.5,
+    16599.5
+   ],
+   "time": "4:36:19",
+   "score": 6,
+   "reason": "Firefight goes wrong, Wasted, then Speed: 'What am I supposed to do? I have an AR with no bullets!'",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "hook": "HE FORGOT ONE TINY DETAIL",
+   "title": "Speed brought an empty AR to a gunfight 💀",
+   "file": "output/OIeLbmyraRQ/short_c10.mp4",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t21234",
+   "status": "rejected",
+   "range": [
+    21234.25,
+    21264.25
+   ],
+   "time": "5:53:54",
+   "score": 2,
+   "reason": "Phone screen and standing in an office.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  },
+  {
+   "key": "t21370",
+   "status": "rejected",
+   "range": [
+    21370.5,
+    21400.5
+   ],
+   "time": "5:56:10",
+   "score": 2,
+   "reason": "Map screens, then plain driving with no reaction.",
+   "pass": 1,
+   "reviewed_by": "claude-code",
+   "date": "2026-11-25"
+  }
+ ]
+}
