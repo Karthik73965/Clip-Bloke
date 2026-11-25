@@ -75,6 +75,13 @@ The results go to `output/<video_id>/`:
 | `review/` | the frame grids the agent judged |
 | `plan.json` | every editing decision; edit it and run `render --only cXX` to change one Short |
 
+### Clip history across laptops
+
+`history/` records every Short already delivered and every rejected moment. `prepare` and `render` run
+`git pull` / `git push` on it themselves, so this laptop needs push access to the repo (sign in once with
+`git push` or the GitHub credential manager). If the laptop is offline or can't push, the run still works on
+the local copy and pushes on a later run. Set `GTA_BLOKE_NO_SYNC=1` to turn the syncing off.
+
 ## Without an agent
 
 ```powershell

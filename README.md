@@ -11,6 +11,11 @@ stream link
   └─ render   HD only for kept cuts -> 1080x1920 Shorts + upload.json
 ```
 
+**No repeats.** Every delivered Short and every rejected moment is recorded in `history/<video_id>.json`,
+which the tool commits and pushes, so every laptop and agent shares it. Paste the same stream again
+and you get only new moments (it digs into quieter ones each pass). `render` refuses a cut that repeats
+a delivered Short. `python gta_clipper.py history [<id>] [--all]` shows what's been given.
+
 Each Short is built like this:
 
 | Section | What happens |
@@ -30,7 +35,8 @@ The layout is the facecam stacked over the gameplay.
 
 | File | What it does |
 |---|---|
-| `gta_clipper.py` | the pipeline: `prepare`, `render`, `peek`, `auto` |
+| `gta_clipper.py` | the pipeline: `prepare`, `render`, `peek`, `auto`, `history` |
+| `history/` | what was already delivered or rejected, per stream (committed; don't edit) |
 | `reviewer.py` | the review schema, frame grids, and the optional Claude API reviewer |
 | `fetch_sfx.py`, `fetch_bgm.py` | download the free Mixkit SFX and music |
 | `doctor.py` | checks the install |

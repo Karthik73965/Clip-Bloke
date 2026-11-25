@@ -12,6 +12,18 @@ to end **without stopping to ask**. Commands like `prepare` and `render` take mi
 finish. The only reason to stop early is a failed `python doctor.py` check (see SETUP.md). At the end,
 report the total time.
 
+**Never give the user the same clip twice.** `history/<video_id>.json` records every moment already
+delivered (rendered) or rejected, for every stream, and is shared through git:
+- `prepare` pulls it first and skips all of those moments. If the stream was done before, it is a new
+  **pass**: it digs deeper (a lower loudness bar each pass) and offers only moments nobody has judged.
+  Candidate ids continue from the last pass (e.g. `c13` onward), so earlier Shorts are never overwritten.
+- `render` refuses a cut that shares more than 5 s with an already-delivered Short. If that happens,
+  trim the candidate away from it, or drop it if it's the same moment. Records every Short (and every
+  reviewed reject) as it goes, then commits and pushes `history/` itself.
+- If `prepare` says nothing new is left, don't force it: tell the user, show
+  `python gta_clipper.py history <video_id>`, and mention `--min-z` (e.g. `0.2`) for quieter moments.
+- Don't edit or delete `history/` by hand.
+
 ## Workflow
 
 1. `python gta_clipper.py prepare "<stream url>"`
@@ -46,7 +58,8 @@ report the total time.
 5. `output/<video_id>/upload.json` has a title, description and tags per Short, ready for YouTube.
    Report back to the user:
    - each Short with its path, a one-line description and its score,
-   - how many candidates you rejected, and the main reasons why.
+   - how many candidates you rejected, and the main reasons why,
+   - on a repeat stream, which pass this was and how many earlier moments were skipped.
 
 ## Output spec (agreed with the user)
 

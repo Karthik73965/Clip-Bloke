@@ -26,6 +26,7 @@ import os
 import random
 import re
 import subprocess
+import sys
 import time
 from collections import namedtuple
 from pathlib import Path
@@ -188,9 +189,11 @@ def moving_avg(x, k):
     return out
 
 
-def find_moments(db, live, clip_len, max_n, min_z, min_live, skip=15.0):
+def find_moments(db, live, clip_len, max_n, min_z, min_live, skip=15.0, done=()):
     """Every moment where a loud second jumps above the 8 s before it (screams, crashes,
     explosions) while real gameplay is on screen, best first, until scores drop below min_z.
+    done: (start, end, delivered) stream ranges from earlier passes. No new moment peaks inside
+    one, and new windows are pushed off delivered cuts so a Short is never made twice.
     Returns (moments sorted by time, number of loud peaks dropped as menus/loading)."""
     k, kb = int(1 / HOP), int(8 / HOP)
     burst = moving_avg(db, k)
@@ -204,6 +207,8 @@ def find_moments(db, live, clip_len, max_n, min_z, min_live, skip=15.0):
     score[~near_live] = -np.inf
     lo, hi = int(skip / HOP), int(max(skip, total - skip) / HOP)
     score[:lo] = score[hi:] = -np.inf
+    for s0, s1, _ in done:                         # peak time = i * HOP - 0.5
+        score[max(0, int((s0 + 0.5) / HOP)):max(0, int((s1 + 0.5) / HOP) + 1)] = -np.inf
     moments, dropped = [], 0
     while len(moments) < max_n:
         i = int(np.argmax(score))
@@ -211,6 +216,9 @@ def find_moments(db, live, clip_len, max_n, min_z, min_live, skip=15.0):
             break
         peak = i * HOP - 0.5  # centre of the loud second
         start = min(max(0.0, peak - clip_len * 0.65), max(0.0, total - clip_len))
+        for s0, s1, delivered in done:
+            if delivered and start < s1 and start + clip_len > s0:
+                start = s1 if peak >= s1 else max(0.0, s0 - clip_len)
         a, b = int(start / HOP), int((start + clip_len) / HOP)
         frac = float(live[a:b].mean()) if b > a else 0.0
         if frac < min_live:                           # mostly menus/loading: skip just this peak
@@ -660,6 +668,148 @@ def apply_review(c, r):
     c["reviewed_by"] = "heuristic" if r.reason.startswith("heuristic") else "claude-api"
 
 
+# ---------------------------------------------------------------- history
+# history/<video_id>.json, committed to git so every laptop and agent knows what was already
+# delivered (rendered) or rejected and never makes it again. A re-run of the same stream digs deeper.
+
+HISTORY = ROOT / "history"
+REPEAT_OVERLAP = 5.0   # a new cut sharing more than this many seconds with a delivered one is a repeat
+
+
+def history_path(vid):
+    return HISTORY / f"{vid}.json"
+
+
+def load_history(plan):
+    p = history_path(plan["video_id"])
+    if p.exists():
+        return json.loads(p.read_text(encoding="utf-8"))
+    return {"video_id": plan["video_id"], "url": plan["url"], "title": plan.get("title", ""),
+            "duration": plan.get("duration"), "passes": 0, "clips": []}
+
+
+def save_history(h):
+    HISTORY.mkdir(exist_ok=True)
+    h["clips"].sort(key=lambda x: x["range"][0])
+    history_path(h["video_id"]).write_text(json.dumps(h, indent=1, ensure_ascii=False), encoding="utf-8")
+
+
+def done_ranges(h):
+    return [(x["range"][0], x["range"][1], x["status"] == "delivered") for x in h["clips"]]
+
+
+def record(h, plan, c, status):
+    """Add or update one candidate in the history. A delivered clip stays delivered."""
+    old = next((x for x in h["clips"] if x["key"] == c["key"]), None)
+    if old and old["status"] == "delivered" and status != "delivered":
+        return False
+    if status == "delivered":
+        a, b, _ = cut_range(c)
+        rng = [round(c["start"] + a, 2), round(c["start"] + b, 2)]
+    else:
+        rng = [c["start"], round(c["start"] + c["length"], 2)]
+    entry = {"key": c["key"], "status": status, "range": rng, "time": hms(rng[0]), "score": c.get("score"),
+             "reason": c.get("reason", ""), "pass": plan.get("pass", 1), "reviewed_by": c.get("reviewed_by")}
+    if status == "delivered":
+        entry.update(hook=c.get("hook", ""), title=c.get("title", ""),
+                     file=f"output/{plan['video_id']}/{c['output']}")
+    entry["date"] = old["date"] if old and old["status"] == status else time.strftime("%Y-%m-%d")
+    if old:
+        h["clips"].remove(old)
+    h["clips"].append(entry)
+    return old != entry
+
+
+def record_plan(h, plan, out_dir, min_score=6):
+    """Rendered candidates are delivered; reviewed ones that won't be rendered are rejected.
+    Unreviewed candidates and kept ones still waiting for a render are left out."""
+    changed = 0
+    for c in plan["candidates"]:
+        if c.get("output") and (out_dir / c["output"]).exists():
+            changed += record(h, plan, c, "delivered")
+        elif c.get("reviewed_by", "none") != "none" and not (c["keep"] and c["score"] >= min_score):
+            changed += record(h, plan, c, "rejected")
+    return changed
+
+
+def repeat_of(h, c):
+    """The delivered history entry this candidate's cut would repeat, if any."""
+    a, b, _ = cut_range(c)
+    s0, s1 = c["start"] + a, c["start"] + b
+    return next((x for x in h["clips"] if x["status"] == "delivered" and x["key"] != c["key"]
+                 and min(s1, x["range"][1]) - max(s0, x["range"][0]) > REPEAT_OVERLAP), None)
+
+
+def git(*args, timeout=90):
+    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, text=True, timeout=timeout)
+
+
+def sync_history(push=False, msg=""):
+    """Pull the shared history before a run; commit and push only history/ after one.
+    Never fatal: offline or without git access the run goes on with the local copy."""
+    if os.environ.get("GTA_BLOKE_NO_SYNC"):
+        return
+    try:
+        if git("rev-parse", "--is-inside-work-tree").returncode or not git("remote").stdout.strip():
+            return
+        if not push:
+            r = git("pull", "--rebase", "--autostash", "-q")
+            if r.returncode:
+                print(f"  history: git pull failed, using the local copy ({r.stderr.strip()[:200]})")
+            return
+        git("add", "history")
+        if git("diff", "--cached", "--quiet", "--", "history").returncode == 0:
+            return
+        git("commit", "-q", "-m", msg, "--", "history")
+        r = git("push", "-q")
+        if r.returncode:
+            git("pull", "--rebase", "--autostash", "-q")
+            r = git("push", "-q")
+        print("  history: pushed to git" if r.returncode == 0 else
+              f"  history: committed locally, push failed ({r.stderr.strip()[:200]})")
+    except (OSError, subprocess.TimeoutExpired) as e:
+        print(f"  history: git sync skipped ({e})")
+
+
+def close_pass(p, plan, h, out_dir):
+    """A plan with recorded candidates is a finished pass: keep it as plan_pass<n>.json and
+    carry over only the candidates still waiting for review or render."""
+    record_plan(h, plan, out_dir)
+    seen = {x["key"] for x in h["clips"]}
+    if not any(c["key"] in seen for c in plan["candidates"]):
+        return plan
+    n = plan.get("pass", 1)
+    p.replace(p.with_name(f"plan_pass{n}.json"))
+    if (out_dir / "upload.json").exists():
+        (out_dir / "upload.json").replace(out_dir / f"upload_pass{n}.json")
+    left = [c for c in plan["candidates"] if c["key"] not in seen]
+    plan.update({"pass": n + 1, "id_base": plan.get("id_base", 0) + len(plan["candidates"]), "candidates": left})
+    return plan
+
+
+def video_id_of(ref):
+    m = re.search(r"(?:v=|youtu\.be/|/live/|/shorts/)([\w-]{11})", ref)
+    return m.group(1) if m else ref
+
+
+def history_cmd(args):
+    sync_history()
+    files = [history_path(video_id_of(args.stream))] if args.stream else sorted(HISTORY.glob("*.json"))
+    if not files or not files[0].exists():
+        print("No history yet" + (f" for {args.stream}" if args.stream else ""))
+        return
+    for f in files:
+        h = json.loads(f.read_text(encoding="utf-8"))
+        given = [x for x in h["clips"] if x["status"] == "delivered"]
+        print(f"{h['video_id']}  {h['title'][:60]}  - {len(given)} delivered, "
+              f"{len(h['clips']) - len(given)} rejected, {h['passes']} pass(es)")
+        if args.stream or args.all:
+            for x in h["clips"]:
+                if x["status"] == "delivered" or args.all:
+                    print(f"  {x['time']}  {x['status']:9}  {x['score']}/10  "
+                          f"{x.get('title') or x.get('reason', '')[:70]}")
+
+
 def prepare(args):
     t0 = time.time()
     print("Downloading...")
@@ -674,7 +824,13 @@ def prepare(args):
             p.replace(p.with_name("plan_v1.json"))
         plan = {"version": 2, "video_id": vid, "url": args.url, "title": info.get("title", ""),
                 "duration": info.get("duration"), "credit": re.sub(r"\s+", "", info.get("uploader") or ""),
-                "voice": VOICE, "facecam": None, "layout_tall": 1.25, "candidates": []}
+                "voice": VOICE, "facecam": None, "layout_tall": 1.25, "pass": 1, "id_base": 0, "candidates": []}
+    sync_history()
+    h = load_history(plan)
+    plan = close_pass(p, plan, h, out_dir)
+    plan.setdefault("pass", 1)
+    h["passes"] = max(h["passes"], plan["pass"])
+    min_z = args.min_z if args.min_z is not None else max(0.3, 0.8 - 0.25 * (plan["pass"] - 1))
     plan.update(audio=str(Path(audio).relative_to(ROOT)) if Path(audio).is_relative_to(ROOT) else str(audio),
                 video=str(Path(video).relative_to(ROOT)) if video and Path(video).is_relative_to(ROOT) else video and str(video),
                 lowres=str(Path(lowres).relative_to(ROOT)) if Path(lowres).is_relative_to(ROOT) else str(lowres))
@@ -685,8 +841,15 @@ def prepare(args):
     db = loudness_db(audio)
     live = live_gameplay(lowres, len(db))
     print(f"  {live.mean() * 100:.0f}% of the stream is live gameplay ({time.time() - t0:.0f}s)")
-    moments, dropped = find_moments(db, live, args.len, args.max, args.min_z, args.min_live)
+    given = sum(x["status"] == "delivered" for x in h["clips"])
+    if h["clips"]:
+        print(f"  pass {plan['pass']}: skipping {given} delivered and {len(h['clips']) - given} rejected "
+              f"moments from earlier passes, digging deeper (min score {min_z:.2f})")
+    moments, dropped = find_moments(db, live, args.len, args.max, min_z, args.min_live, done=done_ranges(h))
     print(f"  {len(moments)} candidate moments; {dropped} loud moments skipped as menus/loading/black")
+    if not moments and not plan["candidates"]:
+        print(f"Nothing new left in this stream above score {min_z:.2f}. Try --min-z {max(0.1, min_z - 0.3):.1f} "
+              "to dig into quieter moments, or see `python gta_clipper.py history " + vid + "`")
     tr = Transcriber(args.model)
     for i, m in enumerate(moments, 1):
         key = f"t{int(m['start'])}"
@@ -712,9 +875,11 @@ def prepare(args):
         print(f"  [{i}/{len(moments)}] {hms(m['start'])}  live {m['live']:.0%}  loud {m['score']:.1f}")
 
     plan["candidates"].sort(key=lambda c: c["start"])
-    for i, c in enumerate(plan["candidates"], 1):
+    for i, c in enumerate(plan["candidates"], plan.get("id_base", 0) + 1):   # ids never reuse an earlier pass's
         c["id"] = f"c{i:02d}"
     save_plan(p, plan)
+    save_history(h)
+    sync_history(push=True, msg=f"history: {vid} pass {plan['pass']} started")
     print(f"Prepared {len(plan['candidates'])} candidates in {(time.time() - t0) / 60:.1f} min -> {p}")
     return p, plan
 
@@ -775,8 +940,19 @@ def render(args, p=None, plan=None):
     if args.only:
         cands = [c for c in plan["candidates"] if c["id"] in args.only or c["key"] in args.only]
     cands = sorted(cands, key=lambda c: -c["score"])[:args.n or None]
+    sync_history()
+    h = load_history(plan)
+    if not args.allow_repeat:
+        for c in list(cands):
+            if x := repeat_of(h, c):
+                print(f"{c['id']}: skipped, its cut repeats the Short already delivered at {x['time']} "
+                      f"({x['file']}). Trim it away from that or pass --allow-repeat")
+                cands.remove(c)
     if not cands:
         print("Nothing to render: no candidate has keep=true and score >= --min-score")
+        record_plan(h, plan, out_dir, args.min_score)
+        save_history(h)
+        sync_history(push=True, msg=f"history: {plan['video_id']} pass {plan.get('pass', 1)} reviewed")
         return
 
     # HD sections download in the background while earlier clips render
@@ -810,12 +986,18 @@ def render(args, p=None, plan=None):
         total, _ = assemble("clip.mkv", cut, cap_y, work, out, encoder, plan.get("voice", VOICE))
         preview_strip(out, out_dir / "preview" / f"short_{c['id']}.jpg")
         c["output"] = out.name
+        record(h, plan, c, "delivered")
+        save_history(h)
         done += 1
         print(f"[{n}/{len(cands)}] {out.name}  {c['score']}/10, {total:.0f}s, mood {cut['mood']}  "
               f"({time.time() - t:.0f}s)")
     pool.shutdown()
     save_plan(p, plan)
     write_upload(out_dir, plan)
+    record_plan(h, plan, out_dir, args.min_score)
+    save_history(h)
+    given = sum(x["status"] == "delivered" for x in h["clips"])
+    sync_history(push=True, msg=f"history: {plan['video_id']} +{done} Shorts ({given} delivered in total)")
     print(f"Rendered {done} Shorts in {(time.time() - t0) / 60:.1f} min -> {out_dir} (titles in upload.json)")
 
 
@@ -868,14 +1050,16 @@ def parse_box(text):
 
 def main():
     load_env()
+    sys.stdout.reconfigure(errors="replace")   # titles with emoji on a cp1252 Windows console
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     def prep_args(sp):
         sp.add_argument("url")
         sp.add_argument("--max", type=int, default=80, help="most candidate moments to prepare (default 80)")
-        sp.add_argument("--min-z", type=float, default=0.8,
-                        help="loudness score a moment needs (default 0.8; lower finds more, weaker ones)")
+        sp.add_argument("--min-z", type=float, default=None,
+                        help="loudness score a moment needs (default 0.8 on the first pass of a stream, "
+                             "0.25 lower on each re-run, down to 0.3; lower finds more, weaker ones)")
         sp.add_argument("--min-live", type=float, default=0.6,
                         help="share of a window that must be live gameplay (default 0.6)")
         sp.add_argument("--len", type=float, default=30, help="seconds per candidate window (default 30)")
@@ -890,6 +1074,8 @@ def main():
         sp.add_argument("--layout", choices=["auto", "blur"], default="auto",
                         help="auto: facecam-over-gameplay when a facecam box is known, else blurred background")
         sp.add_argument("--facecam", type=parse_box, help="force facecam box as x,y,w,h fractions")
+        sp.add_argument("--allow-repeat", action="store_true",
+                        help="render even if the cut repeats a Short already delivered (see history/)")
 
     sp = sub.add_parser("prepare", help="scan the whole stream, write every candidate to plan.json for review")
     prep_args(sp)
@@ -906,8 +1092,11 @@ def main():
     sp.add_argument("start", type=float, nargs="?", help="seconds into the candidate window (may be negative)")
     sp.add_argument("end", type=float, nargs="?")
     sp.add_argument("--frame", type=float, help="seconds into the candidate; full frame with a 10%% grid")
+    sp = sub.add_parser("history", help="what was already delivered/rejected, per stream (history/*.json)")
+    sp.add_argument("stream", nargs="?", help="video id or link; default: every stream")
+    sp.add_argument("--all", action="store_true", help="list rejected moments too")
     args = ap.parse_args()
-    {"prepare": prepare, "render": render, "auto": auto, "peek": peek}[args.cmd](args)
+    {"prepare": prepare, "render": render, "auto": auto, "peek": peek, "history": history_cmd}[args.cmd](args)
 
 
 if __name__ == "__main__":
